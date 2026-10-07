@@ -1,0 +1,1605 @@
+{
+  "name": "Project 9 — AI Legal Navigator (RAG + HITL + автообновление)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        368
+      ],
+      "id": "4118aa9c-b99c-4d4e-9f4d-76cd6965743a",
+      "name": "Telegram: вопрос сотрудника",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "questionText",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "askerChatId",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "askerName",
+              "value": "={{ $json.message.from.first_name }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "askerUsername",
+              "value": "={{ $json.message.from.username }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "askedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        288,
+        368
+      ],
+      "id": "f03d67b8-083f-44ec-8c7a-434f36cfbc83",
+      "name": "Извлечение данных вопроса"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Ты — «Юридический навигатор», внутренний AI-ассистент компании Globex Solutions GmbH. Твоя единственная задача — помогать сотрудникам ориентироваться в корпоративных юридических процедурах строго по корпоративному юридическому руководству.\n\nЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ\n1. При КАЖДОМ вопросе ты ОБЯЗАН вызвать инструмент legal_knowledge_search и искать ответ только в найденных фрагментах руководства.\n2. Тебе ЗАПРЕЩЕНО отвечать из общих знаний модели, додумывать, обобщать «по логике» или ссылаться на нормы, которых нет в найденных фрагментах.\n3. Если в найденных фрагментах НЕТ прямого подтверждения ответа — честно признай это (confidence = \"low\"), а не формулируй правдоподобный ответ. Частичное совпадение темы — это НЕ подтверждение.\n\nФОРМАТ ОТВЕТА — строго JSON по заданной схеме:\n- confidence: \"high\" ТОЛЬКО если найден фрагмент, прямо и однозначно отвечающий на вопрос; во всех остальных случаях \"low\".\n- answer: ответ сотруднику простым языком со ссылкой на конкретный пункт/раздел руководства. При confidence=\"low\" — пустая строка.\n- requires_action: true ТОЛЬКО если сотрудник просит выполнить действие с реальными последствиями (подготовить/отправить запрос на согласование, деловое письмо) И основание для действия подтверждено руководством. Информационный вопрос («какой порог?», «кто подписывает?») — это НЕ действие: requires_action=false.\n- source_summary: точное указание на пункт документа, например: «Раздел 5.2 \"Матрица полномочий на подписание\": договоры EUR 5 001–25 000 подписывает директор функции, требуется виза юридического отдела». Общие фразы вида «по данным руководства» ЗАПРЕЩЕНЫ. При confidence=\"low\" — пустая строка.\n- reason_no_answer: при confidence=\"low\" — краткое объяснение, чего именно нет в базе (например: «В руководстве нет положений о праве штата Калифорния»). При confidence=\"high\" — пустая строка.\n- email_to, email_subject, email_body: заполняются ТОЛЬКО при requires_action=true — черновик делового письма для согласования. В email_body обязательно процитируй основание из руководства (номер раздела + суть правила). Адресат — из контекста вопроса; если неясен, используй contracts@example.com (договорная группа). Неизвестные данные помечай [уточнить]. При requires_action=false — пустые строки.\n\nЖЁСТКИЕ ПРАВИЛА\n- Никогда не выдумывай суммы, сроки, номера разделов, адреса.\n- Вопросы о внешнем законодательстве (другие юрисдикции, штрафы, ипотека, законы иных стран) и персональных ситуациях, не описанных в руководстве, → confidence=\"low\".\n- Ты никогда не отправляешь письма сам: любой черновик уходит на согласование человеку.\n- Отвечай на русском языке."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        528,
+        368
+      ],
+      "id": "d1334c8c-79fe-4cae-996a-a2455b037bbd",
+      "name": "AI Agent — Legal Navigator"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        192,
+        624
+      ],
+      "id": "8a5e179a-8a83-4332-b793-6e46cd57ba73",
+      "name": "OpenRouter Chat Model",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "legal_knowledge_search",
+        "toolDescription": "Поиск в корпоративном юридическом руководстве Globex Solutions GmbH (коллекция legal): пороги согласования договоров, матрица полномочий на подписание, претензионно-исковая работа, внешние консультанты, GDPR-процедуры. Вызывай при каждом вопросе пользователя.",
+        "qdrantCollection": {
+          "__rl": true,
+          "mode": "list",
+          "value": "legal",
+          "cachedResultName": "legal"
+        },
+        "topK": 5,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        624
+      ],
+      "id": "e5b4246e-be38-494b-8ef8-32dc2c76db3d",
+      "name": "RAG: юридическое руководство",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        464,
+        800
+      ],
+      "id": "8caf8a13-06ba-4b88-9f05-0f2ddb751369",
+      "name": "Embeddings — поиск",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"confidence\": \"high\",\n  \"answer\": \"Договор до EUR 5 000 подписывает руководитель подразделения без визы юридического отдела (типовой договор).\",\n  \"requires_action\": false,\n  \"source_summary\": \"Раздел 5.2 «Матрица полномочий на подписание»: до EUR 5 000 — руководитель подразделения, виза юр. отдела не требуется\",\n  \"reason_no_answer\": \"\",\n  \"email_to\": \"\",\n  \"email_subject\": \"\",\n  \"email_body\": \"\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        624
+      ],
+      "id": "e1ddc000-031c-4864-88de-f6e09582f1fc",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram: вопрос сотрудника').item.json.message.chat.id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        352,
+        624
+      ],
+      "id": "06f87dfb-d3a1-47b1-bcf6-ca4e1a128574",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.confidence }}",
+                    "rightValue": "high",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "39fcb90e-1dac-4769-bacf-70f43e501b1e"
+                  },
+                  {
+                    "leftValue": "={{ $json.output.requires_action }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    },
+                    "id": "ac64c5ad-6270-44e2-a4e1-c780e61f729c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "А: прямой ответ"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.confidence }}",
+                    "rightValue": "high",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cf207a2e-1357-479d-ab82-1deb9f6b93ff"
+                  },
+                  {
+                    "leftValue": "={{ $json.output.requires_action }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "9b166f4b-5b09-4bb1-ac0d-54c456ac6158"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Б: требует действия"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "В: эскалация (fail-safe)"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        368
+      ],
+      "id": "0e673393-c9e6-4110-9f5b-ca0a3d10d294",
+      "name": "Маршрутизация А/Б/В"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=✅ {{ $json.output.answer }}\n\n📄 Источник: {{ $json.output.source_summary }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        48
+      ],
+      "id": "ad566855-3994-4f22-aaa4-4f053d4635f9",
+      "name": "А: ответ из базы",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "YOUR_CHAT_ID",
+        "message": "=📨 Требуется согласование письма\n\nСотрудник: {{ $('Извлечение данных вопроса').item.json.askerName }}\nВопрос: {{ $('Извлечение данных вопроса').item.json.questionText }}\n\nКому: {{ $json.output.email_to }}\nТема: {{ $json.output.email_subject }}\n\nТекст письма:\n{{ $json.output.email_body }}\n\n📄 Основание: {{ $json.output.source_summary }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        384
+      ],
+      "id": "bdaef7a8-ea6b-47d6-8341-e9f019de25c2",
+      "name": "Б: согласование в Telegram",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1552,
+        384
+      ],
+      "id": "4ad9d092-e6e1-4455-9a47-064da7c6c266",
+      "name": "Б: подтверждено?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('AI Agent — Legal Navigator').item.json.output.email_to }}",
+        "subject": "={{ $('AI Agent — Legal Navigator').item.json.output.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $('AI Agent — Legal Navigator').item.json.output.email_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1776,
+        288
+      ],
+      "id": "1a5177ee-97d5-4bde-9a27-a3cf79ad486b",
+      "name": "Б: отправка письма (Gmail)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "decision",
+              "value": "approved",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "question",
+              "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "email_to",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.email_to }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "email_subject",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.email_subject }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "source_summary",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.source_summary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        288
+      ],
+      "id": "1108cdcb-5dc9-41fb-918e-062558cb691b",
+      "name": "Б: строка Approve"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Approvals"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2208,
+        288
+      ],
+      "id": "d0e1dbfa-225a-45f6-9a46-15216ff9d2f4",
+      "name": "Б: лог Approve (Sheets)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=✅ Письмо согласовано и отправлено.\n\nКому: {{ $('AI Agent — Legal Navigator').item.json.output.email_to }}\nТема: {{ $('AI Agent — Legal Navigator').item.json.output.email_subject }}\n\n📄 Основание: {{ $('AI Agent — Legal Navigator').item.json.output.source_summary }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2432,
+        288
+      ],
+      "id": "bd1a6086-eca3-4fdd-a40a-cb5f12dc43aa",
+      "name": "Б: сотруднику — отправлено",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "decision",
+              "value": "rejected",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "question",
+              "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "email_to",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.email_to }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "email_subject",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.email_subject }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "source_summary",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.source_summary }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "reject_reason",
+              "value": "={{ $json.data?.text || 'не указана' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        512
+      ],
+      "id": "b366df55-1345-44f4-846d-6c5d2a3f9910",
+      "name": "Б: строка Reject"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Approvals"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2224,
+        512
+      ],
+      "id": "e4e96632-e451-4153-9fa4-64c709803e1d",
+      "name": "Б: лог Reject (Sheets)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=❌ Отправка письма отменена согласующим.\n\nПричина: {{ $('Б: строка Reject').item.json.reject_reason }}\n\nЕсли вопрос актуален — обратитесь в юридический отдел (contracts@example.com).",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2432,
+        512
+      ],
+      "id": "e290c9d3-39cf-4d0c-a55f-ecb790950f77",
+      "name": "Б: сотруднику — отклонено",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=🤝 В базе знаний нет подтверждённого ответа на ваш вопрос.\nПричина: {{ $json.output.reason_no_answer }}\n\nЯ передал вопрос юридическому отделу — ответ придёт в этот чат.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        864
+      ],
+      "id": "c0dc55ed-8508-4f50-b22e-9dfeb35ca058",
+      "name": "В: сотруднику — передаю юристу",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "status",
+              "value": "escalated",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "question",
+              "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "asker_name",
+              "value": "={{ $('Извлечение данных вопроса').item.json.askerName }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "asker_chat_id",
+              "value": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "reason_no_answer",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.reason_no_answer }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "expert_answer",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "answered_at",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1424,
+        864
+      ],
+      "id": "63e8adab-a8a6-49e6-897b-2522ffe20016",
+      "name": "В: строка эскалации"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Escalations"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1648,
+        864
+      ],
+      "id": "1f0f001a-4370-48ec-89e2-4cd2fa4321cf",
+      "name": "В: лог эскалации (Sheets)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "YOUR_CHAT_ID",
+        "message": "=⚖️ Эскалация вопроса от сотрудника\n\nСотрудник: {{ $('Извлечение данных вопроса').item.json.askerName }} (@{{ $('Извлечение данных вопроса').item.json.askerUsername }})\nИсходный вопрос: {{ $('Извлечение данных вопроса').item.json.questionText }}\n\nПричина эскалации: {{ $('AI Agent — Legal Navigator').item.json.output.reason_no_answer }}\n\nОтветьте текстом на это сообщение — ответ будет автоматически переслан сотруднику и сохранён в базе знаний.",
+        "responseType": "freeText",
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeUnit": "minutes"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1872,
+        864
+      ],
+      "id": "85aa0b10-0fa3-4ba9-a2c6-c38a50aee77a",
+      "name": "В: запрос юристу (Send and Wait)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "expertAnswer",
+              "value": "={{ $json.data.text }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "answeredAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        864
+      ],
+      "id": "b53473a4-98e7-4cf6-b5cf-9af7ba3d4a8d",
+      "name": "В: извлечение ответа юриста"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.expertAnswer }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2304,
+        864
+      ],
+      "id": "2b001763-b171-40c2-810c-99e6fa47e2fe",
+      "name": "В: юрист ответил?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=⚖️ Ответ юридического отдела на ваш вопрос:\n«{{ $('Извлечение данных вопроса').item.json.questionText }}»\n\n{{ $('В: извлечение ответа юриста').item.json.expertAnswer }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2656,
+        656
+      ],
+      "id": "24b600b0-2f57-4b7f-97fb-5d11efae75aa",
+      "name": "В: ответ юриста сотруднику",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "status",
+              "value": "answered",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "question",
+              "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "asker_name",
+              "value": "={{ $('Извлечение данных вопроса').item.json.askerName }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "asker_chat_id",
+              "value": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "reason_no_answer",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.reason_no_answer }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "expert_answer",
+              "value": "={{ $('В: извлечение ответа юриста').item.json.expertAnswer }}",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "answered_at",
+              "value": "={{ $('В: извлечение ответа юриста').item.json.answeredAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2544,
+        848
+      ],
+      "id": "35ddcfa9-9c8d-4d68-9282-c4d6759cb2ec",
+      "name": "В: строка ответа"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Escalations"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2768,
+        848
+      ],
+      "id": "885aada0-034a-4063-8bd6-228486be7fb6",
+      "name": "В: лог ответа юриста (Sheets)",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "text",
+              "value": "=Вопрос: {{ $('Извлечение данных вопроса').item.json.questionText }}\nОтвет: {{ $('В: извлечение ответа юриста').item.json.expertAnswer }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "metaTitle",
+              "value": "=FAQ: {{ $('Извлечение данных вопроса').item.json.questionText.slice(0, 60) }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "metaDepartment",
+              "value": "Юридический",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "metaContentType",
+              "value": "faq",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "metaSource",
+              "value": "human_hitl",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "metaCreatedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2544,
+        1072
+      ],
+      "id": "12202baa-f8ff-4536-9c99-c7d5ada2ac4e",
+      "name": "В: формирование чанка Q&A"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "mode": "list",
+          "value": "legal",
+          "cachedResultName": "legal"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        2768,
+        1072
+      ],
+      "id": "23f1e62d-7128-4673-a188-bf40093b8e7a",
+      "name": "В: запись в базу знаний (Qdrant)",
+      "credentials": {},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "title",
+                "value": "={{ $json.metaTitle }}"
+              },
+              {
+                "name": "department",
+                "value": "={{ $json.metaDepartment }}"
+              },
+              {
+                "name": "content_type",
+                "value": "={{ $json.metaContentType }}"
+              },
+              {
+                "name": "source",
+                "value": "={{ $json.metaSource }}"
+              },
+              {
+                "name": "created_at",
+                "value": "={{ $json.metaCreatedAt }}"
+              },
+              {
+                "name": "original_question",
+                "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        1216
+      ],
+      "id": "36444ac3-e527-415e-81b6-978d2e004871",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkOverlap": 100,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        1408
+      ],
+      "id": "8ff352d9-4f7a-4585-88f4-b2c08bfa0956",
+      "name": "Text Splitter"
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2768,
+        1264
+      ],
+      "id": "4458f310-a2c5-49a1-b5bc-1fa0fa49ef89",
+      "name": "Embeddings — запись",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Извлечение данных вопроса').item.json.askerChatId }}",
+        "text": "=⏳ Юрист пока не ответил на ваш вопрос. Ответ придёт в этот чат, как только будет готов.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2544,
+        1280
+      ],
+      "id": "7d513989-c22c-4175-811b-867d9c9c4894",
+      "name": "В: сотруднику — юрист не ответил",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "content": "## AI Legal Navigator - Project 9\n**Три правила:** 1) без выдумок - только база (Qdrant `legal`); 2) без самодеятельности - действия только после HITL; 3) не знаю → эскалация юристу.\n\nTelegram → Агент (RAG-tool + Structured Output + Memory) → Switch по `confidence` + `requires_action` → ветки А/Б/В.\nFail-safe: любой неожиданный вывод агента уходит в ветку В.",
+        "height": 220,
+        "width": 884,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        96,
+        80
+      ],
+      "id": "8746112f-fd49-42ff-98d0-81fad987734d",
+      "name": "Note: обзор"
+    },
+    {
+      "parameters": {
+        "content": "## Ветка А - «Знаю, просто вопрос»\nconfidence=high, requires_action=false.\nПрямой ответ сотруднику + source_summary (конкретный пункт руководства).",
+        "height": 144,
+        "width": 644,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        -112
+      ],
+      "id": "db0c37eb-be25-409f-acd2-996ca22b6772",
+      "name": "Note: ветка А"
+    },
+    {
+      "parameters": {
+        "content": "## Ветка Б - «Знаю, требует действия»\nconfidence=high, requires_action=true.\nЧерновик письма → Telegram Send and Wait (Approve/Reject) → Gmail ТОЛЬКО при Approve. Оба исхода логируются в лист Approvals.",
+        "height": 180,
+        "width": 540,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        608
+      ],
+      "id": "c8a4f135-f355-43e0-a820-df3cfc3cc430",
+      "name": "Note: ветка Б"
+    },
+    {
+      "parameters": {
+        "content": "## Ветка В - «Не знаю» (эскалация)\nconfidence=low. Уведомление сотруднику → лог в Escalations → Send and Wait юристу (freeText, лимит 45 мин - включить в UI!) → IF на тайм-аут.\nПосле ответа юриста: пересылка сотруднику (обязательно) + лог (обязательно) + запись Q&A-чанка в Qdrant (опционально, onError=continue) - автообновление базы.",
+        "height": 188,
+        "width": 972,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        1040
+      ],
+      "id": "e227eda2-a5c9-4fe9-b494-9f7ce86dff35",
+      "name": "Note: ветка В"
+    },
+    {
+      "parameters": {
+        "content": "## Перед запуском (см. Project_9_UI_Checklist.md)\n1. Credentials: Telegram, OpenRouter, OpenAI (embeddings), Qdrant, Gmail, Google Sheets.\n2. Заменить: CHAT_ID согласующего, CHAT_ID юриста, ID таблицы.\n3. Коллекция `legal` заполнена руководством (workflow загрузки).\n4. В ноде «В: запрос юристу» включить Limit Wait Time = 45 мин.\n5. Тест-кейсы: порог подписания (А), согласование 8000 EUR (Б: Approve и Reject), NDA Калифорния (В), ипотека Германия (В).",
+        "height": 372,
+        "width": 420,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -320
+      ],
+      "id": "3c0f976f-6806-4b40-b07a-3b90dabfadb3",
+      "name": "Note: настройка"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a1",
+              "name": "question",
+              "value": "={{ $('Извлечение данных вопроса').item.json.questionText }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "answer",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.answer }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "source_summary",
+              "value": "={{ $('AI Agent — Legal Navigator').item.json.output.source_summary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "p9-a-set-1",
+      "name": "А: строка ответа",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1424,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Answers"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "p9-a-sheets-1",
+      "name": "А: лог ответа (Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1648,
+        48
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "YOUR_CHAT_ID",
+        "message": "=❌ Вы отклонили отправку письма.\n\nВопрос сотрудника: {{ $('Извлечение данных вопроса').item.json.questionText }}\n\nУкажите причину отказа — она будет передана сотруднику и записана в лог.",
+        "responseType": "freeText",
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 5,
+              "resumeUnit": "minutes"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "id": "p9-b-reason-1",
+      "name": "Б: причина отказа (Send and Wait)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1776,
+        512
+      ],
+      "credentials": {}
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram: вопрос сотрудника": {
+      "main": [
+        [
+          {
+            "node": "Извлечение данных вопроса",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечение данных вопроса": {
+      "main": [
+        [
+          {
+            "node": "AI Agent — Legal Navigator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent — Legal Navigator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG: юридическое руководство": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent — Legal Navigator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings — поиск": {
+      "ai_embedding": [
+        [
+          {
+            "node": "RAG: юридическое руководство",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent — Legal Navigator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent — Legal Navigator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent — Legal Navigator": {
+      "main": [
+        [
+          {
+            "node": "Маршрутизация А/Б/В",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Маршрутизация А/Б/В": {
+      "main": [
+        [
+          {
+            "node": "А: ответ из базы",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Б: согласование в Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "В: сотруднику — передаю юристу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: согласование в Telegram": {
+      "main": [
+        [
+          {
+            "node": "Б: подтверждено?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: подтверждено?": {
+      "main": [
+        [
+          {
+            "node": "Б: отправка письма (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Б: причина отказа (Send and Wait)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: отправка письма (Gmail)": {
+      "main": [
+        [
+          {
+            "node": "Б: строка Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: строка Approve": {
+      "main": [
+        [
+          {
+            "node": "Б: лог Approve (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: лог Approve (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Б: сотруднику — отправлено",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: строка Reject": {
+      "main": [
+        [
+          {
+            "node": "Б: лог Reject (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: лог Reject (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Б: сотруднику — отклонено",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: сотруднику — передаю юристу": {
+      "main": [
+        [
+          {
+            "node": "В: строка эскалации",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: строка эскалации": {
+      "main": [
+        [
+          {
+            "node": "В: лог эскалации (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: лог эскалации (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "В: запрос юристу (Send and Wait)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: запрос юристу (Send and Wait)": {
+      "main": [
+        [
+          {
+            "node": "В: извлечение ответа юриста",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: извлечение ответа юриста": {
+      "main": [
+        [
+          {
+            "node": "В: юрист ответил?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: юрист ответил?": {
+      "main": [
+        [
+          {
+            "node": "В: ответ юриста сотруднику",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "В: строка ответа",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "В: формирование чанка Q&A",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "В: сотруднику — юрист не ответил",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: строка ответа": {
+      "main": [
+        [
+          {
+            "node": "В: лог ответа юриста (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "В: формирование чанка Q&A": {
+      "main": [
+        [
+          {
+            "node": "В: запись в базу знаний (Qdrant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "В: запись в базу знаний (Qdrant)",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings — запись": {
+      "ai_embedding": [
+        [
+          {
+            "node": "В: запись в базу знаний (Qdrant)",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "А: ответ из базы": {
+      "main": [
+        [
+          {
+            "node": "А: строка ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "А: строка ответа": {
+      "main": [
+        [
+          {
+            "node": "А: лог ответа (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Б: причина отказа (Send and Wait)": {
+      "main": [
+        [
+          {
+            "node": "Б: строка Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {},
+  "nodeGroups": [],
+  "staticData": null
+}

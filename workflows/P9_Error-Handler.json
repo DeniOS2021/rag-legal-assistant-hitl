@@ -1,0 +1,60 @@
+{
+  "name": "Project 9 — Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "err1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=🚨 Сбой в «{{ $json.workflow.name }}»\nНода: {{ $json.execution.lastNodeExecuted }}\nОшибка: {{ $json.execution.error.message }}\n{{ $json.execution.url }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "tg1",
+      "name": "Telegram: алерт админу",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {}
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Telegram: алерт админу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "meta": {},
+  "nodeGroups": [],
+  "staticData": null
+}

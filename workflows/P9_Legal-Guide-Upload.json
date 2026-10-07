@@ -1,0 +1,314 @@
+{
+  "name": "Project 9 — загрузка юридического руководства (upload)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Загрузка документа в базу знаний (legal)",
+        "formDescription": "Загрузите юридическое руководство (PDF) для индексации в Qdrant",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Документ",
+              "fieldType": "file",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Название документа",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        48,
+        240
+      ],
+      "id": "661cd9b9-82f2-422f-96e8-460221feef1d",
+      "name": "Форма загрузки документа"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "________",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        272,
+        240
+      ],
+      "id": "44732308-ee92-471c-ab6d-0b83f4a842fd",
+      "name": "Извлечение текста из файла"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Очистка текста руководства (2 фазы, урок 166)\nlet text = $input.first().json.text || '';\n// Фаза 1: структурный мусор\ntext = text.replace(/Страница \\d+( из \\d+)?/gi, '');\ntext = text.replace(/Seite \\d+ von \\d+/gi, '');\ntext = text.replace(/^.+\\.{3,}\\s*\\d+\\s*$/gm, '');            // строки оглавления\ntext = text.replace(/^[_\\-=]{5,}$/gm, '');\ntext = text.replace(/Юридический отдел \\| Корпоративное руководство по правовой деятельности/g, '');\ntext = text.replace(/Версия 2\\.1 \\| 2024/g, '');\n// Фаза 2: артефакты\ntext = text.replace(/(\\w+)-\\n(\\w+)/g, '$1$2');\ntext = text.replace(/ {2,}/g, ' ');\ntext = text.replace(/\\n{3,}/g, '\\n\\n');\ntext = text.split('\\n').map(l => l.trim()).join('\\n');\nreturn [{ json: { text: text.trim(), title: $('Форма загрузки документа').first().json['Название документа'] } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ],
+      "id": "689efd8b-30b8-4da8-a011-ad0c46ecc3b2",
+      "name": "Очистка текста"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.text.length }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        240
+      ],
+      "id": "978cf578-3f09-498c-a189-4a87a0a4472c",
+      "name": "Проверка наличия текста"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "mode": "list",
+          "value": "legal",
+          "cachedResultName": "legal"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        144
+      ],
+      "id": "fb1f0435-e6aa-477d-992f-36e3575fef6d",
+      "name": "Qdrant — загрузка в коллекцию legal",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "title",
+                "value": "={{ $json.title }}"
+              },
+              {
+                "name": "department",
+                "value": "Юридический"
+              },
+              {
+                "name": "content_type",
+                "value": "policy"
+              },
+              {
+                "name": "language",
+                "value": "ru"
+              },
+              {
+                "name": "version",
+                "value": "2.1"
+              },
+              {
+                "name": "is_current",
+                "value": "true"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        288
+      ],
+      "id": "9a55fca5-451a-45d7-9c5f-b3214655036f",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 1200,
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        464
+      ],
+      "id": "714d7e90-c7ae-421c-bc7f-0029f499d0e6",
+      "name": "Recursive Text Splitter"
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        336
+      ],
+      "id": "a7cf1f7d-3592-4a33-8a8f-227b60e9d9fe",
+      "name": "Embeddings OpenAI",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "errorMessage": "Документ не содержит текст (скан без OCR, пароль или битый файл)"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        928,
+        512
+      ],
+      "id": "c4582329-c5c4-4295-8936-b1623aa29280",
+      "name": "Stop and Error"
+    },
+    {
+      "parameters": {
+        "content": "## Загрузка руководства в Qdrant (День 1–2)\nФорма → Extract (PDF) → очистка (колонтитулы, оглавление, переносы) → IF → Qdrant insert.\nЧанкинг policy: 1200/200 (урок 163). Коллекция `legal` (1536, Cosine) создаётся заранее в Qdrant Dashboard.\nПосле загрузки: проверить чанки в Dashboard - таблица 5.2 (матрица полномочий) должна читаться.",
+        "height": 200,
+        "width": 816,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b08c4ac9-a840-4903-8700-15bd5fca98f0",
+      "name": "Note: загрузка"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Форма загрузки документа": {
+      "main": [
+        [
+          {
+            "node": "Извлечение текста из файла",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Извлечение текста из файла": {
+      "main": [
+        [
+          {
+            "node": "Очистка текста",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Очистка текста": {
+      "main": [
+        [
+          {
+            "node": "Проверка наличия текста",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка наличия текста": {
+      "main": [
+        [
+          {
+            "node": "Qdrant — загрузка в коллекцию legal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Qdrant — загрузка в коллекцию legal",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant — загрузка в коллекцию legal",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {},
+  "nodeGroups": [],
+  "staticData": null
+}
